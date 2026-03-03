@@ -1,11 +1,9 @@
 from fastapi import APIRouter, HTTPException
-from schemas import SummarizeRequest, SummarizeResponse
-from github_client import parse_github_url, fetch_repo_readme
-from llm import summarize_repository
+from src.schemas import SummarizeRequest, SummarizeResponse
+from src.github_client import parse_github_url, fetch_repo_readme
+from src.llm import summarize_repository
 
 router = APIRouter()
-
-# note this a regular def (not async) for simplicity, since both the GitHub call and LLM call are synchronous.
 
 @router.post("/summarize", response_model=SummarizeResponse)
 def summarize_repo(payload: SummarizeRequest):

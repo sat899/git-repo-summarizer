@@ -1,7 +1,7 @@
 import json
 from typing import Any, Dict
 from openai import OpenAI
-from schemas import SummarizeResponse
+from src.schemas import SummarizeResponse
 
 client = OpenAI()
 
