@@ -90,5 +90,16 @@ README should contain:
 - Which model you chose and why (1–2 sentences is fine)
 - Your approach to handling repository contents (what you include, what you skip, and why)
 
+## Plan / Tasks
 
-
+1. Set up uv environment, dependencies, git, api keys etc - DONE
+2. Set up basic API route and functional flow for just readmes - DONE
+3. Create Streamlit front-end - DONE
+4. Explore additional GitHub API data (repo metadata, file tree, languages)
+5. Design initial file selection and filtering strategy (what to include, what to skip)
+6. Extend GitHub client to fetch and filter files according to that strategy
+7. Implement simple context builder with a clear size/budget limit
+8. Update LLM prompt to handle multi-file context while keeping the same JSON output schema
+9. Harden JSON parsing and error handling (invalid URL, private/empty repo, network/LLM failures)
+10. Test summarization on a small set of varied repos and tweak strategy as needed
+11. Finalize README sections on model choice and repository-content handling approach
