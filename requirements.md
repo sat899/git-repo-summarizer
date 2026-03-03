@@ -95,11 +95,11 @@ README should contain:
 1. Set up uv environment, dependencies, git, api keys etc - DONE
 2. Set up basic API route and functional flow for just readmes - DONE
 3. Create Streamlit front-end - DONE
-4. Explore additional GitHub API data (repo metadata, file tree, languages)
-5. Design initial file selection and filtering strategy (what to include, what to skip)
-6. Extend GitHub client to fetch and filter files according to that strategy
-7. Implement simple context builder with a clear size/budget limit
-8. Update LLM prompt to handle multi-file context while keeping the same JSON output schema
-9. Harden JSON parsing and error handling (invalid URL, private/empty repo, network/LLM failures)
+4. Explore additional GitHub API data (repo metadata, file tree, languages; e.g. `fetch_repo_metadata`, `fetch_repo_tree`)
+5. Design initial file selection and filtering strategy (what to include, what to skip; e.g. `should_skip_path`, `FileInfo`)
+6. Extend GitHub client to fetch and filter files according to that strategy (`list_repo_files`, `filter_relevant_files`)
+7. Implement simple context builder with a clear size/budget limit (e.g. `build_context_blob`)
+8. Update LLM prompt to handle multi-file context while keeping the same JSON output schema (adapt `summarize_repository` in `llm.py`)
+9. Harden JSON parsing and error handling (invalid URL, private/empty repo, network/LLM failures; e.g. `parse_summary_response`)
 10. Test summarization on a small set of varied repos and tweak strategy as needed
 11. Finalize README sections on model choice and repository-content handling approach
