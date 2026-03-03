@@ -1,0 +1,18 @@
+[project]
+name = "git-repo-summarizer"
+version = "0.1.0"
+description = "API service that summarizes GitHub repositories"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi",
+  "uvicorn[standard]",
+  "httpx",
+  "pydantic",
+  "python-dotenv",
+  "openai>=1.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
