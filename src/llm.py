@@ -64,17 +64,11 @@ def summarize_repository(
         ],
     )
 
-    raw_content = completion.choices[0].message.content
-    data: Dict[str, Any] = json.loads(raw_content)
+    content = completion.choices[0].message.content
+    data: Dict[str, Any] = json.loads(content)
 
     return SummarizeResponse(
         summary=data.get("summary", ""),
         technologies=data.get("technologies") or [],
         structure=data.get("structure", ""),
-        repo_metadata=repo_metadata,
-        repo_languages=repo_languages,
-        debug={
-            "llm_input": user_content,
-            "llm_raw_output": raw_content,
-        },
     )

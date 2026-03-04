@@ -40,4 +40,6 @@ def summarize_repo(payload: SummarizeRequest):
         repo_metadata=repo_metadata,
         repo_languages=repo_languages,
     )
+    summary.repo_metadata = repo_metadata
+    summary.repo_languages = repo_languages
     return summary

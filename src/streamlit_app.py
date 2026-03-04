@@ -3,8 +3,7 @@ import streamlit as st
 
 API_URL = "http://localhost:8000/summarize"
 
-st.set_page_config(page_title="Git Repo Summarizer", layout="wide")
-
+st.set_page_config(page_title="Git Repo Summarizer", layout="centered")
 st.title("Git Repository Summarizer")
 st.write(
     "Enter the URL of a public GitHub repository and get a brief summary of "
@@ -17,9 +16,6 @@ github_url = st.text_input(
 )
 
 summarize_clicked = st.button("Summarize")
-
-data = None
-debug = {}
 
 if summarize_clicked:
     if not github_url:
@@ -40,7 +36,6 @@ if summarize_clicked:
                     st.error(f"API error ({response.status_code}): {message}")
                 else:
                     data = response.json()
-                    debug = data.get("debug") or {}
 
                     st.subheader("Summary")
                     st.write(data.get("summary", ""))
@@ -54,27 +49,3 @@ if summarize_clicked:
                     if structure:
                         st.subheader("Structure")
                         st.write(structure)
-
-with st.sidebar:
-    st.header("Observability")
-
-    if debug:
-        llm_input_tab, llm_output_tab = st.tabs(["LLM input", "LLM output"])
-
-        with llm_input_tab:
-            st.caption("Full context sent to the LLM (user message).")
-            llm_input = debug.get("llm_input")
-            if llm_input:
-                st.code(llm_input, language="markdown")
-            else:
-                st.info("No LLM input captured for this request.")
-
-        with llm_output_tab:
-            st.caption("Raw JSON text returned by the LLM before parsing.")
-            llm_raw_output = debug.get("llm_raw_output")
-            if llm_raw_output:
-                st.code(llm_raw_output, language="json")
-            else:
-                st.info("No LLM output captured for this request.")
-    else:
-        st.caption("Run a summarization to see LLM input/output here.")

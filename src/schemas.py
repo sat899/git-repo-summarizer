@@ -13,4 +13,3 @@ class SummarizeResponse(BaseModel):
     structure: str
     repo_metadata: Optional[Dict[str, Any]] = None
     repo_languages: Optional[Dict[str, int]] = None
-    debug: Optional[Dict[str, Any]] = None
