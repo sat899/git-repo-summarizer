@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 from typing import Any, Dict, List
 
@@ -21,6 +22,19 @@ def _raise_for_status(resp: httpx.Response, context: str = "Request") -> None:
     if resp.status_code == 404:
         raise GitHubAPIError(404, "Repository not found")
     if resp.status_code == 403:
+        remaining = resp.headers.get("x-ratelimit-remaining")
+        body = (resp.text or "").lower()
+        if remaining == "0" or "rate limit" in body or "rate limit exceeded" in body:
+            msg = "GitHub API rate limit exceeded. Set GITHUB_TOKEN for higher limits or try again later."
+            reset = resp.headers.get("x-ratelimit-reset")
+            if reset and reset.isdigit():
+                try:
+                    ts = int(reset)
+                    dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+                    msg += f" Limit resets at {dt.isoformat(timespec='minutes')} UTC."
+                except (ValueError, OSError):
+                    pass
+            raise GitHubAPIError(403, msg)
         raise GitHubAPIError(403, "Repository is private or access denied")
     raise GitHubAPIError(502, f"{context} failed (status {resp.status_code})")
 
