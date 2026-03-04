@@ -9,6 +9,8 @@ from src.github_client import (
     fetch_repo_metadata,
     fetch_repo_readme,
     fetch_repo_tree,
+    format_tree_for_prompt,
+    validate_llm_file_picks,
     parse_github_url,
 )
 
@@ -131,3 +133,51 @@ def test_fetch_repo_tree_raises_when_branch_request_fails():
             fetch_repo_tree("owner", "repo")
     assert exc_info.value.status_code == 422
     assert "empty" in exc_info.value.message.lower()
+
+
+# --- format_tree_for_prompt ---
+
+def test_format_tree_basic():
+    tree = [
+        {"path": "src", "type": "tree"},
+        {"path": "src/main.py", "type": "blob", "size": 2048},
+        {"path": "README.md", "type": "blob", "size": 500},
+    ]
+    result = format_tree_for_prompt(tree)
+    assert "README.md  (500 B)" in result
+    assert "src/" in result
+    assert "src/main.py  (2.0 KB)" in result
+
+
+def test_format_tree_truncates():
+    tree = [{"path": f"file{i}.py", "type": "blob", "size": 100} for i in range(10)]
+    result = format_tree_for_prompt(tree, max_entries=3)
+    assert "... and 7 more entries" in result
+
+
+# --- validate_llm_file_picks ---
+
+def test_validate_picks_filters_missing_paths():
+    tree = [
+        {"path": "a.py", "type": "blob", "size": 100},
+        {"path": "b.py", "type": "blob", "size": 100},
+    ]
+    picks = ["a.py", "nonexistent.py", "b.py"]
+    result = validate_llm_file_picks(picks, tree)
+    assert result == ["a.py", "b.py"]
+
+
+def test_validate_picks_skips_large_files():
+    tree = [
+        {"path": "big.py", "type": "blob", "size": 999_999},
+        {"path": "small.py", "type": "blob", "size": 100},
+    ]
+    result = validate_llm_file_picks(["big.py", "small.py"], tree, max_size_bytes=50_000)
+    assert result == ["small.py"]
+
+
+def test_validate_picks_respects_max_files():
+    tree = [{"path": f"f{i}.py", "type": "blob", "size": 10} for i in range(20)]
+    picks = [f"f{i}.py" for i in range(20)]
+    result = validate_llm_file_picks(picks, tree, max_files=5)
+    assert len(result) == 5
