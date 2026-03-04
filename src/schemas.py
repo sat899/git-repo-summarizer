@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -9,3 +11,4 @@ class SummarizeResponse(BaseModel):
     summary: str
     technologies: list[str]
     structure: str
+    llm_input: Optional[str] = None

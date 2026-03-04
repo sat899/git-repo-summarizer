@@ -81,4 +81,5 @@ def summarize_repository(
         summary=data.get("summary", ""),
         technologies=data.get("technologies") or [],
         structure=data.get("structure", ""),
+        llm_input=user_content,
     )

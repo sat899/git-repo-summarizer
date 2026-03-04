@@ -17,8 +17,12 @@ from src.llm import summarize_repository
 router = APIRouter()
 
 
-@router.post("/summarize", response_model=SummarizeResponse)
-def summarize_repo(payload: SummarizeRequest):
+@router.post(
+    "/summarize",
+    response_model=SummarizeResponse,
+    response_model_exclude_none=True,
+)
+def summarize_repo(payload: SummarizeRequest, debug: bool = False):
     try:
         owner, repo = parse_github_url(payload.github_url)
     except ValueError as exc:
@@ -58,4 +62,7 @@ def summarize_repo(payload: SummarizeRequest):
         repo_languages=repo_languages,
         files_context=files_context,
     )
+    if not debug:
+        summary.llm_input = None
+
     return summary

@@ -23,7 +23,11 @@ if summarize_clicked:
     else:
         with st.spinner("Summarizing repository..."):
             try:
-                response = httpx.post(API_URL, json={"github_url": github_url}, timeout=60)
+                response = httpx.post(
+                    f"{API_URL}?debug=true",
+                    json={"github_url": github_url},
+                    timeout=60,
+                )
             except httpx.RequestError as exc:
                 st.error(f"Could not reach the API: {exc}")
             else:
@@ -49,3 +53,8 @@ if summarize_clicked:
                     if structure:
                         st.subheader("Structure")
                         st.write(structure)
+
+                    llm_input = data.get("llm_input")
+                    if llm_input:
+                        st.subheader("LLM input (prompt)")
+                        st.code(llm_input, language="markdown")
