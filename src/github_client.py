@@ -164,6 +164,61 @@ def format_tree_for_prompt(
     return "\n".join(lines)
 
 
+# Paths/patterns we never send to the LLM, even if the file-selector returns them.
+_IGNORE_PATH_PREFIXES = (
+    "node_modules/",
+    ".git/",
+    ".github/",
+    "dist/",
+    "build/",
+    "__pycache__/",
+    ".venv/",
+    "venv/",
+    "vendor/",
+    ".next/",
+    "target/",
+    "coverage/",
+    ".pytest_cache/",
+)
+_IGNORE_PATH_SUFFIXES = (
+    ".lock",
+    ".min.js",
+    ".bundle.js",
+    ".map",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".ico",
+    ".pdf",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".pyc",
+    ".class",
+    ".exe",
+    ".dll",
+    ".so",
+    ".dylib",
+)
+
+
+def _should_skip_path(path: str) -> bool:
+    """True if this path should never be included in LLM context (lock files, binary, noise)."""
+    if not path or not isinstance(path, str):
+        return True
+    path_lower = path.lower()
+    if any(path_lower.startswith(p) for p in _IGNORE_PATH_PREFIXES):
+        return True
+    if any(path_lower.endswith(s) for s in _IGNORE_PATH_SUFFIXES):
+        return True
+    # Common lock/config filenames at repo root
+    base = path_lower.split("/")[-1]
+    if base in ("package-lock.json", "yarn.lock", "pnpm-lock.yaml", "cargo.lock"):
+        return True
+    return False
+
+
 def validate_llm_file_picks(
     picks: List[str],
     tree: List[Dict[str, Any]],
@@ -172,8 +227,8 @@ def validate_llm_file_picks(
 ) -> List[str]:
     """
     Validates and filters the file paths chosen by the LLM against the
-    actual tree. Drops paths that don't exist, are too large, or exceed
-    the max file count.
+    actual tree. Drops paths that are blocklisted (lock files, binary, noise),
+    don't exist, are too large, or exceed the max file count.
     """
     tree_blobs: Dict[str, int] = {}
     for entry in tree:
@@ -182,6 +237,8 @@ def validate_llm_file_picks(
 
     validated: List[str] = []
     for path in picks:
+        if _should_skip_path(path):
+            continue
         if path not in tree_blobs:
             continue
         if tree_blobs[path] > max_size_bytes:

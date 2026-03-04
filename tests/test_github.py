@@ -181,3 +181,15 @@ def test_validate_picks_respects_max_files():
     picks = [f"f{i}.py" for i in range(20)]
     result = validate_llm_file_picks(picks, tree, max_files=5)
     assert len(result) == 5
+
+
+def test_validate_picks_filters_blocklisted_paths():
+    tree = [
+        {"path": "src/main.py", "type": "blob", "size": 100},
+        {"path": "package-lock.json", "type": "blob", "size": 100},
+        {"path": "node_modules/foo/index.js", "type": "blob", "size": 100},
+        {"path": "image.png", "type": "blob", "size": 100},
+    ]
+    picks = ["src/main.py", "package-lock.json", "node_modules/foo/index.js", "image.png"]
+    result = validate_llm_file_picks(picks, tree)
+    assert result == ["src/main.py"]
