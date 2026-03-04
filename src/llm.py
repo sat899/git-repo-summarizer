@@ -93,6 +93,9 @@ def summarize_repository(
         "language statistics, and the contents of key source files.\n"
         "Produce a JSON object with keys: "
         "summary (string), technologies (list of strings), structure (string).\n"
+        "For structure: give a concise high-level overview of the project layout "
+        "in a few short lines (main directories and what they contain). Do not list "
+        "every file or write long paragraphs.\n"
         "Respond ONLY with a JSON object, no extra text."
     )
 
