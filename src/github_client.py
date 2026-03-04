@@ -1,8 +1,10 @@
 from urllib.parse import urlparse
 from typing import Any, Dict, List
+
 import httpx
 
 GITHUB_API_BASE = "https://api.github.com"
+
 
 def parse_github_url(url: str) -> tuple[str, str]:
     """
@@ -100,3 +102,79 @@ def fetch_repo_tree(owner: str, repo: str, ref: str | None = None, recursive: bo
         raise RuntimeError("Unexpected tree format from GitHub API")
 
     return tree
+
+
+def fetch_file_contents(owner: str, repo: str, path: str, ref: str | None = None) -> str:
+    """
+    Fetches the contents of a single file at the given path.
+    """
+    url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/contents/{path}"
+    params: Dict[str, str] | None = None
+    if ref is not None:
+        params = {"ref": ref}
+    headers = {"Accept": "application/vnd.github.v3.raw"}
+
+    resp = httpx.get(url, headers=headers, params=params, timeout=10)
+    if resp.status_code == 200:
+        return resp.text
+
+    raise RuntimeError(f"Failed to fetch file contents for {path} (status {resp.status_code})")
+
+
+def select_files_for_context(
+    tree: List[Dict[str, Any]],
+    max_files: int = 5,
+    max_size_bytes: int = 20_000,
+) -> List[str]:
+    """
+    Very simple first-pass selection of files to include in LLM context.
+
+    - Only includes regular files (type == 'blob')
+    - Skips obviously noisy paths (e.g. node_modules, .git)
+    - Skips files larger than max_size_bytes
+    - Prefers common text/code extensions
+    """
+    ignore_prefixes = (
+        "node_modules/",
+        ".git/",
+        ".github/",
+        "dist/",
+        "build/",
+        "__pycache__/",
+        ".venv/",
+    )
+    allowed_exts = (
+        ".py",
+        ".md",
+        ".rst",
+        ".txt",
+        ".js",
+        ".ts",
+    )
+
+    selected: List[str] = []
+
+    for entry in tree:
+        if entry.get("type") != "blob":
+            continue
+
+        path = entry.get("path")
+        if not isinstance(path, str):
+            continue
+
+        # Skip obvious noise directories
+        if any(path.startswith(prefix) for prefix in ignore_prefixes):
+            continue
+
+        size = entry.get("size")
+        if isinstance(size, int) and size > max_size_bytes:
+            continue
+
+        if not path.lower().endswith(allowed_exts):
+            continue
+
+        selected.append(path)
+        if len(selected) >= max_files:
+            break
+
+    return selected
