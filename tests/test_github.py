@@ -1,10 +1,11 @@
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
 from src.github_client import (
     GITHUB_API_BASE,
     GitHubAPIError,
+    fetch_file_contents,
     fetch_repo_languages,
     fetch_repo_metadata,
     fetch_repo_readme,
@@ -13,6 +14,13 @@ from src.github_client import (
     validate_llm_file_picks,
     parse_github_url,
 )
+
+
+def _mock_client(get_return_value):
+    """Return a mock AsyncClient whose get() returns the given response."""
+    client = Mock()
+    client.get = AsyncMock(return_value=get_return_value)
+    return client
 
 
 def test_parse_github_url_valid():
@@ -35,69 +43,69 @@ def test_parse_github_url_invalid(url: str):
         parse_github_url(url)
 
 
-def test_fetch_repo_readme_success():
+async def test_fetch_repo_readme_success():
     mock_resp = Mock(status_code=200, text="# README")
+    client = _mock_client(mock_resp)
 
-    with patch("src.github_client.httpx.get", return_value=mock_resp) as mock_get:
-        text = fetch_repo_readme("owner", "repo")
+    text = await fetch_repo_readme("owner", "repo", client=client)
 
     assert text == "# README"
-    mock_get.assert_called_once_with(
+    client.get.assert_called_once_with(
         f"{GITHUB_API_BASE}/repos/owner/repo/readme",
         headers={"Accept": "application/vnd.github.v3.raw"},
         timeout=10,
     )
 
 
-def test_fetch_repo_readme_error():
+async def test_fetch_repo_readme_error():
     mock_resp = Mock(status_code=404)
+    client = _mock_client(mock_resp)
 
-    with patch("src.github_client.httpx.get", return_value=mock_resp):
-        with pytest.raises(GitHubAPIError) as exc_info:
-            fetch_repo_readme("owner", "repo")
+    with pytest.raises(GitHubAPIError) as exc_info:
+        await fetch_repo_readme("owner", "repo", client=client)
     assert exc_info.value.status_code == 404
     assert "not found" in exc_info.value.message.lower()
 
 
-def test_fetch_repo_metadata_success():
+async def test_fetch_repo_metadata_success():
     payload = {"full_name": "owner/repo", "default_branch": "main"}
     mock_resp = Mock(status_code=200, json=lambda: payload)
+    client = _mock_client(mock_resp)
 
-    with patch("src.github_client.httpx.get", return_value=mock_resp):
-        data = fetch_repo_metadata("owner", "repo")
+    data = await fetch_repo_metadata("owner", "repo", client=client)
 
     assert data == payload
 
 
-def test_fetch_repo_metadata_error():
+async def test_fetch_repo_metadata_error():
     mock_resp = Mock(status_code=500)
+    client = _mock_client(mock_resp)
 
-    with patch("src.github_client.httpx.get", return_value=mock_resp):
-        with pytest.raises(GitHubAPIError) as exc_info:
-            fetch_repo_metadata("owner", "repo")
+    with pytest.raises(GitHubAPIError) as exc_info:
+        await fetch_repo_metadata("owner", "repo", client=client)
     assert exc_info.value.status_code == 502
 
 
-def test_fetch_repo_languages_success():
+async def test_fetch_repo_languages_success():
     payload = {"Python": 1234, "C": 10}
     mock_resp = Mock(status_code=200, json=lambda: payload)
+    client = _mock_client(mock_resp)
 
-    with patch("src.github_client.httpx.get", return_value=mock_resp):
-        data = fetch_repo_languages("owner", "repo")
+    data = await fetch_repo_languages("owner", "repo", client=client)
 
     assert data == {"Python": 1234, "C": 10}
 
 
-def test_fetch_repo_languages_error():
+async def test_fetch_repo_languages_error():
     mock_resp = Mock(status_code=404)
+    client = _mock_client(mock_resp)
 
-    with patch("src.github_client.httpx.get", return_value=mock_resp):
-        with pytest.raises(GitHubAPIError) as exc_info:
-            fetch_repo_languages("owner", "repo")
+    with pytest.raises(GitHubAPIError) as exc_info:
+        await fetch_repo_languages("owner", "repo", client=client)
     assert exc_info.value.status_code == 404
 
 
-def test_fetch_repo_tree_success_uses_default_branch_and_returns_tree():
+async def test_fetch_repo_tree_success_uses_default_branch_and_returns_tree():
     metadata_resp = Mock(
         status_code=200,
         json=lambda: {"default_branch": "main"},
@@ -108,31 +116,68 @@ def test_fetch_repo_tree_success_uses_default_branch_and_returns_tree():
     )
     tree_payload = {"tree": [{"path": "README.md", "type": "blob"}]}
     tree_resp = Mock(status_code=200, json=lambda: tree_payload)
+    client = Mock()
+    client.get = AsyncMock(side_effect=[metadata_resp, branch_resp, tree_resp])
 
-    with patch(
-        "src.github_client.httpx.get",
-        side_effect=[metadata_resp, branch_resp, tree_resp],
-    ):
-        tree = fetch_repo_tree("owner", "repo")
+    tree = await fetch_repo_tree("owner", "repo", client=client)
 
     assert tree == tree_payload["tree"]
 
 
-def test_fetch_repo_tree_raises_when_branch_request_fails():
+async def test_fetch_repo_tree_raises_when_branch_request_fails():
     metadata_resp = Mock(
         status_code=200,
         json=lambda: {"default_branch": "main"},
     )
     branch_resp = Mock(status_code=404)
+    client = Mock()
+    client.get = AsyncMock(side_effect=[metadata_resp, branch_resp])
 
-    with patch(
-        "src.github_client.httpx.get",
-        side_effect=[metadata_resp, branch_resp],
-    ):
-        with pytest.raises(GitHubAPIError) as exc_info:
-            fetch_repo_tree("owner", "repo")
+    with pytest.raises(GitHubAPIError) as exc_info:
+        await fetch_repo_tree("owner", "repo", client=client)
     assert exc_info.value.status_code == 422
     assert "empty" in exc_info.value.message.lower()
+
+
+# --- fetch_file_contents ---
+
+async def test_fetch_file_contents_success():
+    mock_resp = Mock(status_code=200, text="print('hello')")
+    client = _mock_client(mock_resp)
+
+    text = await fetch_file_contents("owner", "repo", "src/main.py", client=client)
+
+    assert text == "print('hello')"
+    client.get.assert_called_once_with(
+        f"{GITHUB_API_BASE}/repos/owner/repo/contents/src/main.py",
+        headers={"Accept": "application/vnd.github.v3.raw"},
+        params=None,
+        timeout=10,
+    )
+
+
+async def test_fetch_file_contents_with_ref():
+    mock_resp = Mock(status_code=200, text="content")
+    client = _mock_client(mock_resp)
+
+    await fetch_file_contents("owner", "repo", "README.md", ref="main", client=client)
+
+    client.get.assert_called_once_with(
+        f"{GITHUB_API_BASE}/repos/owner/repo/contents/README.md",
+        headers={"Accept": "application/vnd.github.v3.raw"},
+        params={"ref": "main"},
+        timeout=10,
+    )
+
+
+async def test_fetch_file_contents_error():
+    mock_resp = Mock(status_code=404)
+    client = _mock_client(mock_resp)
+
+    with pytest.raises(GitHubAPIError) as exc_info:
+        await fetch_file_contents("owner", "repo", "missing.py", client=client)
+    assert exc_info.value.status_code == 404
+    assert "not found" in exc_info.value.message.lower()
 
 
 # --- format_tree_for_prompt ---
