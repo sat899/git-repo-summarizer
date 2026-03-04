@@ -6,6 +6,25 @@ import httpx
 GITHUB_API_BASE = "https://api.github.com"
 
 
+class GitHubAPIError(Exception):
+    """Raised when a GitHub API call fails. Carries HTTP status and a user-facing message."""
+
+    def __init__(self, status_code: int, message: str):
+        self.status_code = status_code
+        self.message = message
+        super().__init__(message)
+
+
+def _raise_for_status(resp: httpx.Response, context: str = "Request") -> None:
+    if resp.status_code == 200:
+        return
+    if resp.status_code == 404:
+        raise GitHubAPIError(404, "Repository not found")
+    if resp.status_code == 403:
+        raise GitHubAPIError(403, "Repository is private or access denied")
+    raise GitHubAPIError(502, f"{context} failed (status {resp.status_code})")
+
+
 def parse_github_url(url: str) -> tuple[str, str]:
     """
     Accepts URLs like:
@@ -32,11 +51,8 @@ def fetch_repo_readme(owner: str, repo: str) -> str:
     headers = {"Accept": "application/vnd.github.v3.raw"}
 
     resp = httpx.get(url, headers=headers, timeout=10)
-
-    if resp.status_code == 200:
-        return resp.text
-
-    raise RuntimeError(f"Failed to fetch README (status {resp.status_code})")
+    _raise_for_status(resp, "README")
+    return resp.text
 
 def fetch_repo_metadata(owner: str, repo: str) -> Dict[str, Any]:
     """
@@ -44,11 +60,8 @@ def fetch_repo_metadata(owner: str, repo: str) -> Dict[str, Any]:
     """
     url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}"
     resp = httpx.get(url, timeout=10)
-
-    if resp.status_code == 200:
-        return resp.json()
-
-    raise RuntimeError(f"Failed to fetch repo metadata (status {resp.status_code})")
+    _raise_for_status(resp, "Repository metadata")
+    return resp.json()
 
 def fetch_repo_languages(owner: str, repo: str) -> Dict[str, int]:
     """
@@ -58,12 +71,9 @@ def fetch_repo_languages(owner: str, repo: str) -> Dict[str, int]:
     """
     url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/languages"
     resp = httpx.get(url, timeout=10)
-
-    if resp.status_code == 200:
-        data = resp.json()
-        return {str(k): int(v) for k, v in data.items()}
-
-    raise RuntimeError(f"Failed to fetch repo languages (status {resp.status_code})")
+    _raise_for_status(resp, "Repository languages")
+    data = resp.json()
+    return {str(k): int(v) for k, v in data.items()}
 
 def fetch_repo_tree(owner: str, repo: str, ref: str | None = None, recursive: bool = True) -> List[Dict[str, Any]]:
     """
@@ -76,30 +86,29 @@ def fetch_repo_tree(owner: str, repo: str, ref: str | None = None, recursive: bo
         metadata = fetch_repo_metadata(owner, repo)
         ref = metadata.get("default_branch")
         if not ref:
-            raise RuntimeError("Could not determine default branch for repository")
+            raise GitHubAPIError(422, "Repository appears to be empty (no default branch)")
 
-    # Get the commit SHA for the ref
     branch_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/branches/{ref}"
     branch_resp = httpx.get(branch_url, timeout=10)
-    if branch_resp.status_code != 200:
-        raise RuntimeError(f"Failed to fetch branch info for {ref} (status {branch_resp.status_code})")
+    if branch_resp.status_code == 404:
+        raise GitHubAPIError(422, "Repository appears to be empty (no branches)")
+    _raise_for_status(branch_resp, "Branch info")
 
     branch_data = branch_resp.json()
     commit = branch_data.get("commit") or {}
     commit_sha = commit.get("sha")
     if not commit_sha:
-        raise RuntimeError("Could not determine commit SHA for branch")
+        raise GitHubAPIError(422, "Repository appears to be empty")
 
     params = {"recursive": "1"} if recursive else None
     tree_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/git/trees/{commit_sha}"
     tree_resp = httpx.get(tree_url, params=params, timeout=10)
-    if tree_resp.status_code != 200:
-        raise RuntimeError(f"Failed to fetch repo tree (status {tree_resp.status_code})")
+    _raise_for_status(tree_resp, "Repository tree")
 
     tree_data = tree_resp.json()
     tree = tree_data.get("tree")
     if not isinstance(tree, list):
-        raise RuntimeError("Unexpected tree format from GitHub API")
+        raise GitHubAPIError(502, "Unexpected tree format from GitHub API")
 
     return tree
 
@@ -115,10 +124,8 @@ def fetch_file_contents(owner: str, repo: str, path: str, ref: str | None = None
     headers = {"Accept": "application/vnd.github.v3.raw"}
 
     resp = httpx.get(url, headers=headers, params=params, timeout=10)
-    if resp.status_code == 200:
-        return resp.text
-
-    raise RuntimeError(f"Failed to fetch file contents for {path} (status {resp.status_code})")
+    _raise_for_status(resp, f"File {path}")
+    return resp.text
 
 
 def select_files_for_context(

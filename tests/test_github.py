@@ -4,6 +4,7 @@ import pytest
 
 from src.github_client import (
     GITHUB_API_BASE,
+    GitHubAPIError,
     fetch_repo_languages,
     fetch_repo_metadata,
     fetch_repo_readme,
@@ -50,8 +51,10 @@ def test_fetch_repo_readme_error():
     mock_resp = Mock(status_code=404)
 
     with patch("src.github_client.httpx.get", return_value=mock_resp):
-        with pytest.raises(RuntimeError):
+        with pytest.raises(GitHubAPIError) as exc_info:
             fetch_repo_readme("owner", "repo")
+    assert exc_info.value.status_code == 404
+    assert "not found" in exc_info.value.message.lower()
 
 
 def test_fetch_repo_metadata_success():
@@ -68,8 +71,9 @@ def test_fetch_repo_metadata_error():
     mock_resp = Mock(status_code=500)
 
     with patch("src.github_client.httpx.get", return_value=mock_resp):
-        with pytest.raises(RuntimeError):
+        with pytest.raises(GitHubAPIError) as exc_info:
             fetch_repo_metadata("owner", "repo")
+    assert exc_info.value.status_code == 502
 
 
 def test_fetch_repo_languages_success():
@@ -86,8 +90,9 @@ def test_fetch_repo_languages_error():
     mock_resp = Mock(status_code=404)
 
     with patch("src.github_client.httpx.get", return_value=mock_resp):
-        with pytest.raises(RuntimeError):
+        with pytest.raises(GitHubAPIError) as exc_info:
             fetch_repo_languages("owner", "repo")
+    assert exc_info.value.status_code == 404
 
 
 def test_fetch_repo_tree_success_uses_default_branch_and_returns_tree():
@@ -122,5 +127,7 @@ def test_fetch_repo_tree_raises_when_branch_request_fails():
         "src.github_client.httpx.get",
         side_effect=[metadata_resp, branch_resp],
     ):
-        with pytest.raises(RuntimeError):
+        with pytest.raises(GitHubAPIError) as exc_info:
             fetch_repo_tree("owner", "repo")
+    assert exc_info.value.status_code == 422
+    assert "empty" in exc_info.value.message.lower()

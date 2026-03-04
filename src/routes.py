@@ -1,8 +1,10 @@
+import httpx
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from src.schemas import SummarizeRequest, SummarizeResponse
 from src.github_client import (
+    GitHubAPIError,
     parse_github_url,
     fetch_repo_metadata,
     fetch_repo_languages,
@@ -36,7 +38,6 @@ def summarize_repo(payload: SummarizeRequest, debug: bool = False):
         repo_languages = fetch_repo_languages(owner, repo)
         readme_text = fetch_repo_readme(owner, repo)
 
-        # Minimal v1: fetch tree and a small sample of representative files
         tree = fetch_repo_tree(owner, repo)
         sample_paths = select_files_for_context(tree)
 
@@ -44,24 +45,36 @@ def summarize_repo(payload: SummarizeRequest, debug: bool = False):
         for path in sample_paths:
             try:
                 content = fetch_file_contents(owner, repo, path)
-            except RuntimeError:
+            except GitHubAPIError:
                 continue
             file_sections.append(f"FILE: {path}\n{content}")
 
         files_context = "\n\n".join(file_sections) if file_sections else None
-    except RuntimeError as exc:
+    except GitHubAPIError as exc:
         return JSONResponse(
-            status_code=502,
-            content={"status": "error", "message": str(exc)},
+            status_code=exc.status_code,
+            content={"status": "error", "message": exc.message},
+        )
+    except httpx.HTTPError as exc:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "error", "message": f"Network error: {exc!s}"},
         )
 
-    summary = summarize_repository(
-        payload.github_url,
-        readme_text,
-        repo_metadata=repo_metadata,
-        repo_languages=repo_languages,
-        files_context=files_context,
-    )
+    try:
+        summary = summarize_repository(
+            payload.github_url,
+            readme_text,
+            repo_metadata=repo_metadata,
+            repo_languages=repo_languages,
+            files_context=files_context,
+        )
+    except Exception as exc:
+        return JSONResponse(
+            status_code=502,
+            content={"status": "error", "message": f"Summarization failed: {exc!s}"},
+        )
+
     if not debug:
         summary.llm_input = None
 
