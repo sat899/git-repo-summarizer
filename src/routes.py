@@ -34,7 +34,12 @@ def summarize_repo(payload: SummarizeRequest):
             content={"status": "error", "message": str(exc)},
         )
 
-    summary = summarize_repository(payload.github_url, readme_text)
+    summary = summarize_repository(
+        payload.github_url,
+        readme_text,
+        repo_metadata=repo_metadata,
+        repo_languages=repo_languages,
+    )
     summary.repo_metadata = repo_metadata
     summary.repo_languages = repo_languages
     return summary
