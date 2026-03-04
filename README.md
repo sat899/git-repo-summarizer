@@ -118,7 +118,7 @@ uv run pytest
 
 ## Approach and Choices
 
-I used the OpenAI API since I already had credits. I chose `gpt-5-mini` since it offers strong performance, including the ability to set its reasoning level, at a reasonable cost.
+I used the OpenAI API since I already had credits. I chose `gpt-5-mini` since it offers strong performance, including the ability to set its reasoning level, and a good sized context window (400k tokens) at a reasonable cost.
 
 For repository contents, the current strategy is:
 
