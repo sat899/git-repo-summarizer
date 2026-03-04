@@ -1,3 +1,5 @@
+import asyncio
+
 import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -37,11 +39,13 @@ async def summarize_repo(request: Request, payload: SummarizeRequest, debug: boo
     MAX_README_CHARS = 30_000
 
     try:
-        repo_languages = await fetch_repo_languages(owner, repo, client=client)
-        readme_text = await fetch_repo_readme(owner, repo, client=client)
+        repo_languages, readme_text, tree = await asyncio.gather(
+            fetch_repo_languages(owner, repo, client=client),
+            fetch_repo_readme(owner, repo, client=client),
+            fetch_repo_tree(owner, repo, client=client),
+        )
         if len(readme_text) > MAX_README_CHARS:
             readme_text = readme_text[:MAX_README_CHARS] + "\n\n[README truncated]"
-        tree = await fetch_repo_tree(owner, repo, client=client)
         tree_text = format_tree_for_prompt(tree)
     except GitHubAPIError as exc:
         return JSONResponse(
@@ -64,32 +68,40 @@ async def summarize_repo(request: Request, payload: SummarizeRequest, debug: boo
             content={"status": "error", "message": f"File selection failed: {exc!s}"},
         )
 
-    # Fetch the selected files, respecting a total content budget
-    MAX_CONTENT_BUDGET = 200_000  # characters
-    try:
-        file_sections: list[str] = []
-        budget_used = 0
-        for path in picked_paths:
-            try:
-                content = await fetch_file_contents(owner, repo, path, client=client)
-            except GitHubAPIError:
-                continue
-            section = f"FILE: {path}\n{content}"
-            if budget_used + len(section) > MAX_CONTENT_BUDGET:
-                remaining = MAX_CONTENT_BUDGET - budget_used
-                if remaining > 200:
-                    section = section[:remaining] + "\n\n[file truncated]"
-                    file_sections.append(section)
-                break
-            file_sections.append(section)
-            budget_used += len(section)
+    # Fetch the selected files concurrently, then apply content budget in priority order
+    MAX_CONTENT_BUDGET = 150_000  # characters
 
-        files_context = "\n\n".join(file_sections) if file_sections else None
-    except httpx.HTTPError as exc:
+    async def _safe_fetch(path: str) -> tuple[str, str | None]:
+        try:
+            content = await fetch_file_contents(owner, repo, path, client=client)
+            return path, content
+        except (GitHubAPIError, httpx.HTTPError):
+            return path, None
+
+    try:
+        fetch_results = await asyncio.gather(*[_safe_fetch(p) for p in picked_paths])
+    except Exception as exc:
         return JSONResponse(
             status_code=503,
             content={"status": "error", "message": f"Network error: {exc!s}"},
         )
+
+    file_sections: list[str] = []
+    budget_used = 0
+    for path, content in fetch_results:
+        if content is None:
+            continue
+        section = f"FILE: {path}\n{content}"
+        if budget_used + len(section) > MAX_CONTENT_BUDGET:
+            remaining = MAX_CONTENT_BUDGET - budget_used
+            if remaining > 200:
+                section = section[:remaining] + "\n\n[file truncated]"
+                file_sections.append(section)
+            break
+        file_sections.append(section)
+        budget_used += len(section)
+
+    files_context = "\n\n".join(file_sections) if file_sections else None
 
     # LLM pass 2: produce the final summary
     try:

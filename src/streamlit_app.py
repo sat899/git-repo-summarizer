@@ -26,7 +26,7 @@ if summarize_clicked:
                 response = httpx.post(
                     f"{API_URL}?debug=false",
                     json={"github_url": github_url},
-                    timeout=60,
+                    timeout=120,
                 )
             except httpx.RequestError as exc:
                 st.error(f"Could not reach the API: {exc}")

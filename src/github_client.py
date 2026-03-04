@@ -198,7 +198,7 @@ async def fetch_file_contents(
 
 def format_tree_for_prompt(
     tree: List[Dict[str, Any]],
-    max_entries: int = 1000,
+    max_entries: int = 500,
 ) -> str:
     """
     Renders the Git tree as a sorted list of paths with sizes,
