@@ -7,6 +7,9 @@ from src.github_client import (
     fetch_repo_metadata,
     fetch_repo_languages,
     fetch_repo_readme,
+    fetch_repo_tree,
+    fetch_file_contents,
+    select_files_for_context,
 )
 from src.llm import summarize_repository
 
@@ -28,6 +31,20 @@ def summarize_repo(payload: SummarizeRequest):
         repo_metadata = fetch_repo_metadata(owner, repo)
         repo_languages = fetch_repo_languages(owner, repo)
         readme_text = fetch_repo_readme(owner, repo)
+
+        # Minimal v1: fetch tree and a small sample of representative files
+        tree = fetch_repo_tree(owner, repo)
+        sample_paths = select_files_for_context(tree)
+
+        file_sections: list[str] = []
+        for path in sample_paths:
+            try:
+                content = fetch_file_contents(owner, repo, path)
+            except RuntimeError:
+                continue
+            file_sections.append(f"FILE: {path}\n{content}")
+
+        files_context = "\n\n".join(file_sections) if file_sections else None
     except RuntimeError as exc:
         return JSONResponse(
             status_code=502,
@@ -39,5 +56,6 @@ def summarize_repo(payload: SummarizeRequest):
         readme_text,
         repo_metadata=repo_metadata,
         repo_languages=repo_languages,
+        files_context=files_context,
     )
     return summary
