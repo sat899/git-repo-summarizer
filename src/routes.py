@@ -10,9 +10,10 @@ from src.github_client import (
     fetch_repo_readme,
     fetch_repo_tree,
     fetch_file_contents,
-    select_files_for_context,
+    format_tree_for_prompt,
+    validate_llm_file_picks,
 )
-from src.llm import summarize_repository
+from src.llm import select_files, summarize_repository
 
 
 router = APIRouter()
@@ -36,17 +37,7 @@ def summarize_repo(payload: SummarizeRequest, debug: bool = False):
         repo_languages = fetch_repo_languages(owner, repo)
         readme_text = fetch_repo_readme(owner, repo)
         tree = fetch_repo_tree(owner, repo)
-        sample_paths = select_files_for_context(tree)
-
-        file_sections: list[str] = []
-        for path in sample_paths:
-            try:
-                content = fetch_file_contents(owner, repo, path)
-            except GitHubAPIError:
-                continue
-            file_sections.append(f"FILE: {path}\n{content}")
-
-        files_context = "\n\n".join(file_sections) if file_sections else None
+        tree_text = format_tree_for_prompt(tree)
     except GitHubAPIError as exc:
         return JSONResponse(
             status_code=exc.status_code,
@@ -58,10 +49,39 @@ def summarize_repo(payload: SummarizeRequest, debug: bool = False):
             content={"status": "error", "message": f"Network error: {exc!s}"},
         )
 
+    # LLM pass 1: ask the model which files to read
+    try:
+        raw_picks = select_files(tree_text, readme_text, repo_languages=repo_languages)
+        picked_paths = validate_llm_file_picks(raw_picks, tree)
+    except Exception as exc:
+        return JSONResponse(
+            status_code=502,
+            content={"status": "error", "message": f"File selection failed: {exc!s}"},
+        )
+
+    # Fetch the selected files
+    try:
+        file_sections: list[str] = []
+        for path in picked_paths:
+            try:
+                content = fetch_file_contents(owner, repo, path)
+            except GitHubAPIError:
+                continue
+            file_sections.append(f"FILE: {path}\n{content}")
+
+        files_context = "\n\n".join(file_sections) if file_sections else None
+    except httpx.HTTPError as exc:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "error", "message": f"Network error: {exc!s}"},
+        )
+
+    # LLM pass 2: produce the final summary
     try:
         summary = summarize_repository(
             payload.github_url,
             readme_text,
+            tree_text,
             repo_languages=repo_languages,
             files_context=files_context,
         )

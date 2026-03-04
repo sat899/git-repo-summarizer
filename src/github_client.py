@@ -128,66 +128,66 @@ def fetch_file_contents(owner: str, repo: str, path: str, ref: str | None = None
     return resp.text
 
 
-def select_files_for_context(
+def format_tree_for_prompt(
     tree: List[Dict[str, Any]],
-    max_files: int = 5,
-    max_size_bytes: int = 20_000,
-) -> List[str]:
+    max_entries: int = 200,
+) -> str:
     """
-    Very simple first-pass selection of files to include in LLM context.
+    Renders the Git tree as a sorted list of paths with sizes,
+    suitable for including in an LLM prompt.
 
-    - Only includes regular files (type == 'blob')
-    - Skips obviously noisy paths (e.g. node_modules, .git)
-    - Skips files larger than max_size_bytes
-    - Prefers common text/code extensions
+    Truncates after max_entries to keep token usage reasonable.
     """
-    ignore_prefixes = (
-        "node_modules/",
-        ".git/",
-        ".github/",
-        "dist/",
-        "build/",
-        "__pycache__/",
-        ".venv/",
-    )
-    allowed_exts = (
-        ".py",
-        ".md",
-        ".rst",
-        ".txt",
-        ".js",
-        ".ts",
-    )
-
-    selected: List[str] = []
-
+    lines: List[str] = []
     for entry in tree:
-        if entry.get("type") != "blob":
-            continue
-
         path = entry.get("path")
         if not isinstance(path, str):
             continue
+        entry_type = entry.get("type")
+        if entry_type == "blob":
+            size = entry.get("size", 0)
+            if size >= 1024:
+                size_label = f"{size / 1024:.1f} KB"
+            else:
+                size_label = f"{size} B"
+            lines.append(f"{path}  ({size_label})")
+        elif entry_type == "tree":
+            lines.append(f"{path}/")
 
-        # Avoid re-sending the top-level README via the tree;
-        # we already include README content separately.
-        lower_path = path.lower()
-        if "/" not in path and lower_path.startswith("readme"):
+    lines.sort()
+
+    total = len(lines)
+    if total > max_entries:
+        lines = lines[:max_entries]
+        lines.append(f"... and {total - max_entries} more entries")
+
+    return "\n".join(lines)
+
+
+def validate_llm_file_picks(
+    picks: List[str],
+    tree: List[Dict[str, Any]],
+    max_files: int = 10,
+    max_size_bytes: int = 50_000,
+) -> List[str]:
+    """
+    Validates and filters the file paths chosen by the LLM against the
+    actual tree. Drops paths that don't exist, are too large, or exceed
+    the max file count.
+    """
+    tree_blobs: Dict[str, int] = {}
+    for entry in tree:
+        if entry.get("type") == "blob" and isinstance(entry.get("path"), str):
+            tree_blobs[entry["path"]] = entry.get("size", 0)
+
+    validated: List[str] = []
+    for path in picks:
+        if path not in tree_blobs:
             continue
-
-        # Skip obvious noise directories
-        if any(path.startswith(prefix) for prefix in ignore_prefixes):
+        if tree_blobs[path] > max_size_bytes:
             continue
-
-        size = entry.get("size")
-        if isinstance(size, int) and size > max_size_bytes:
-            continue
-
-        if not lower_path.endswith(allowed_exts):
-            continue
-
-        selected.append(path)
-        if len(selected) >= max_files:
+        validated.append(path)
+        if len(validated) >= max_files:
             break
 
-    return selected
+    return validated
