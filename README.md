@@ -56,7 +56,7 @@ In a separate terminal:
 ```bash
 curl -X POST http://localhost:8000/summarize \
   -H "Content-Type: application/json" \
-  -d '{"github_url": "https://github.com/psf/requests"}'
+  -d '{"github_url": "https://github.com/psf/requests"}' | python -m json.tool
 ```
 
 You should get a JSON response like:
