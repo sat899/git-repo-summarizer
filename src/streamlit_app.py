@@ -24,7 +24,7 @@ if summarize_clicked:
         with st.spinner("Summarizing repository..."):
             try:
                 response = httpx.post(
-                    f"{API_URL}?debug=true",
+                    f"{API_URL}?debug=false",
                     json={"github_url": github_url},
                     timeout=60,
                 )
