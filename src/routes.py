@@ -1,5 +1,5 @@
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from src.schemas import SummarizeRequest, SummarizeResponse
@@ -24,7 +24,7 @@ router = APIRouter()
     response_model=SummarizeResponse,
     response_model_exclude_none=True,
 )
-def summarize_repo(payload: SummarizeRequest, debug: bool = False):
+async def summarize_repo(request: Request, payload: SummarizeRequest, debug: bool = False):
     try:
         owner, repo = parse_github_url(payload.github_url)
     except ValueError as exc:
@@ -33,14 +33,15 @@ def summarize_repo(payload: SummarizeRequest, debug: bool = False):
             content={"status": "error", "message": str(exc)},
         )
 
+    client = request.app.state.httpx_client
     MAX_README_CHARS = 30_000
 
     try:
-        repo_languages = fetch_repo_languages(owner, repo)
-        readme_text = fetch_repo_readme(owner, repo)
+        repo_languages = await fetch_repo_languages(owner, repo, client=client)
+        readme_text = await fetch_repo_readme(owner, repo, client=client)
         if len(readme_text) > MAX_README_CHARS:
             readme_text = readme_text[:MAX_README_CHARS] + "\n\n[README truncated]"
-        tree = fetch_repo_tree(owner, repo)
+        tree = await fetch_repo_tree(owner, repo, client=client)
         tree_text = format_tree_for_prompt(tree)
     except GitHubAPIError as exc:
         return JSONResponse(
@@ -70,7 +71,7 @@ def summarize_repo(payload: SummarizeRequest, debug: bool = False):
         budget_used = 0
         for path in picked_paths:
             try:
-                content = fetch_file_contents(owner, repo, path)
+                content = await fetch_file_contents(owner, repo, path, client=client)
             except GitHubAPIError:
                 continue
             section = f"FILE: {path}\n{content}"
