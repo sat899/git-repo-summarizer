@@ -97,41 +97,34 @@ uv run pytest
 - **Input**: `github_url` pointing to a public GitHub repository.
 - **GitHub client** (`src/github_client.py`):
   - Parses the URL into `(owner, repo)`.
-  - Calls the GitHub API to fetch:
-    - Repository metadata (`/repos/{owner}/{repo}`).
+  - Fetches from the GitHub API:
     - Language breakdown (`/repos/{owner}/{repo}/languages`).
     - The README (`/repos/{owner}/{repo}/readme`).
     - The full Git tree for the default branch (`/git/trees/{sha}?recursive=1`).
-  - Selects a small sample of representative text/code files from the tree and fetches their contents using the Contents API.
-- **LLM summarizer** (`src/llm.py`):
-  - Builds a single prompt containing:
-    - The repository URL.
-    - README content.
-    - Repository metadata (pretty‑printed JSON).
-    - Repository languages (pretty‑printed JSON).
-    - A few sampled files (each prefixed with `FILE: path` followed by its contents).
-  - Sends this prompt to the OpenAI API and expects strict JSON with `summary`, `technologies`, and `structure`.
+  - Renders the tree as a sorted list of paths with sizes (up to 1000 entries) for the LLM.
+  - After the first LLM returns file picks, validates them (blocklist, existence, per-file size cap) and returns an ordered list. The route then fetches file contents in that order until a total content budget is reached, truncating the last file if needed.
+- **Two-pass LLM** (`src/llm.py`):
+  - **Pass 1 (file selection)**: Receives README, languages, and the full file tree. Returns a JSON list of file paths to read, in priority order. No file contents are sent at this stage.
+  - **Pass 2 (summarization)**: Receives repository URL, README (capped), languages, the same file tree, and the contents of the selected files (within budget). Returns strict JSON with `summary`, `technologies`, and `structure`.
 - **API route** (`src/routes.py`):
-  - Validates the URL and handles GitHub / LLM errors.
-  - Orchestrates GitHub data fetch + context building + LLM call.
-  - Returns a `SummarizeResponse` object containing only `summary`, `technologies`, and `structure`.
+  - Validates the URL; caps README at 30k characters; enforces a 200k-character total budget for file contents when fetching.
+  - Handles GitHub and LLM errors with appropriate status codes.
+  - Returns a `SummarizeResponse` with `summary`, `technologies`, and `structure` (and optionally `llm_input` when `?debug=true`).
 
 ## Approach and Choices
 
-I used the OpenAI API since I already had credits. I chose `gpt-5-mini` since it offers strong performance, including the ability to set its reasoning level, and a good sized context window (400k tokens) at a reasonable cost.
+I used the OpenAI API and chose `gpt-5-mini` for strong performance and a 400k-token context window at reasonable cost.
 
-For repository contents, the current strategy is:
+**Repository content strategy:**
 
-- **Always include**:
-  - The README, if present (primary high‑level description).
-  - Basic repository metadata (description, default branch, stars, topics, etc.).
-  - Language statistics to help the model infer the tech stack.
-- **Sample additional files** from the Git tree:
-  - Only regular files (`type == "blob"`).
-  - Skip obviously noisy paths such as `node_modules/`, `.git/`, `.github/`, `dist/`, `build/`, `__pycache__/`, and `.venv/`.
-  - Skip very large files (currently > 20 KB) to avoid blowing up context.
-  - Only consider common text / code extensions (`.py`, `.md`, `.rst`, `.txt`, `.js`, `.ts`).
-  - Take up to a small fixed number of files (currently 5) as a simple first‑pass heuristic.
+- **Always include** (for both LLM passes where relevant):
+  - The README, truncated to 30k characters if longer.
+  - Language statistics (JSON).
+  - The repository file tree (paths + sizes), up to 1000 entries so the first LLM can see large repos.
+- **File selection** (relevance, not a fixed count):
+  - The first LLM chooses which files to read from the tree, in priority order (entry points, config, key modules; no README, lock files, or generated code).
+  - We validate picks: blocklist (e.g. `node_modules/`, lock files, binaries, `.git/`, `dist/`, `build/`), must exist in tree, each file ≤ 50 KB.
+  - We fetch files in the LLM’s order until a **total content budget** (200k characters) is hit; the last file may be truncated. So we can include many small files or fewer large ones without a fixed file limit.
 - **Context management**:
-  - All of the above (README, metadata, languages, sampled files) are concatenated into a single prompt string.
-  - The response schema remains fixed: the API only returns `summary`, `technologies`, and `structure`, even though the LLM sees richer context.
+  - Tree and README caps plus the content budget keep the summarization prompt within bounds.
+  - The API response schema is fixed: `summary`, `technologies`, `structure` (and `llm_input` only in debug mode).
