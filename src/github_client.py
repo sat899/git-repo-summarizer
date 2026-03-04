@@ -130,7 +130,7 @@ def fetch_file_contents(owner: str, repo: str, path: str, ref: str | None = None
 
 def format_tree_for_prompt(
     tree: List[Dict[str, Any]],
-    max_entries: int = 200,
+    max_entries: int = 1000,
 ) -> str:
     """
     Renders the Git tree as a sorted list of paths with sizes,
@@ -222,13 +222,15 @@ def _should_skip_path(path: str) -> bool:
 def validate_llm_file_picks(
     picks: List[str],
     tree: List[Dict[str, Any]],
-    max_files: int = 10,
-    max_size_bytes: int = 50_000,
+    max_file_size: int = 50_000,
 ) -> List[str]:
     """
     Validates and filters the file paths chosen by the LLM against the
     actual tree. Drops paths that are blocklisted (lock files, binary, noise),
-    don't exist, are too large, or exceed the max file count.
+    don't exist in the tree, or exceed max_file_size individually.
+
+    Preserves the LLM's priority order so callers can enforce a total
+    content budget by iterating through the returned list.
     """
     tree_blobs: Dict[str, int] = {}
     for entry in tree:
@@ -241,10 +243,8 @@ def validate_llm_file_picks(
             continue
         if path not in tree_blobs:
             continue
-        if tree_blobs[path] > max_size_bytes:
+        if tree_blobs[path] > max_file_size:
             continue
         validated.append(path)
-        if len(validated) >= max_files:
-            break
 
     return validated

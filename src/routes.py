@@ -33,9 +33,13 @@ def summarize_repo(payload: SummarizeRequest, debug: bool = False):
             content={"status": "error", "message": str(exc)},
         )
 
+    MAX_README_CHARS = 30_000
+
     try:
         repo_languages = fetch_repo_languages(owner, repo)
         readme_text = fetch_repo_readme(owner, repo)
+        if len(readme_text) > MAX_README_CHARS:
+            readme_text = readme_text[:MAX_README_CHARS] + "\n\n[README truncated]"
         tree = fetch_repo_tree(owner, repo)
         tree_text = format_tree_for_prompt(tree)
     except GitHubAPIError as exc:
@@ -59,15 +63,25 @@ def summarize_repo(payload: SummarizeRequest, debug: bool = False):
             content={"status": "error", "message": f"File selection failed: {exc!s}"},
         )
 
-    # Fetch the selected files
+    # Fetch the selected files, respecting a total content budget
+    MAX_CONTENT_BUDGET = 200_000  # characters
     try:
         file_sections: list[str] = []
+        budget_used = 0
         for path in picked_paths:
             try:
                 content = fetch_file_contents(owner, repo, path)
             except GitHubAPIError:
                 continue
-            file_sections.append(f"FILE: {path}\n{content}")
+            section = f"FILE: {path}\n{content}"
+            if budget_used + len(section) > MAX_CONTENT_BUDGET:
+                remaining = MAX_CONTENT_BUDGET - budget_used
+                if remaining > 200:
+                    section = section[:remaining] + "\n\n[file truncated]"
+                    file_sections.append(section)
+                break
+            file_sections.append(section)
+            budget_used += len(section)
 
         files_context = "\n\n".join(file_sections) if file_sections else None
     except httpx.HTTPError as exc:

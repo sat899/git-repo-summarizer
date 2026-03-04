@@ -172,15 +172,15 @@ def test_validate_picks_skips_large_files():
         {"path": "big.py", "type": "blob", "size": 999_999},
         {"path": "small.py", "type": "blob", "size": 100},
     ]
-    result = validate_llm_file_picks(["big.py", "small.py"], tree, max_size_bytes=50_000)
+    result = validate_llm_file_picks(["big.py", "small.py"], tree, max_file_size=50_000)
     assert result == ["small.py"]
 
 
-def test_validate_picks_respects_max_files():
+def test_validate_picks_preserves_priority_order():
     tree = [{"path": f"f{i}.py", "type": "blob", "size": 10} for i in range(20)]
     picks = [f"f{i}.py" for i in range(20)]
-    result = validate_llm_file_picks(picks, tree, max_files=5)
-    assert len(result) == 5
+    result = validate_llm_file_picks(picks, tree)
+    assert result == picks
 
 
 def test_validate_picks_filters_blocklisted_paths():
