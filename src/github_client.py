@@ -43,39 +43,75 @@ def parse_github_url(url: str) -> tuple[str, str]:
     owner, repo = parts[0], parts[1]
     return owner, repo
 
-def fetch_repo_readme(owner: str, repo: str) -> str:
+async def fetch_repo_readme(
+    owner: str, repo: str, *, client: httpx.AsyncClient | None = None
+) -> str:
     """
     Fetches the README using the GitHub API (public repos only).
     """
     url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/readme"
     headers = {"Accept": "application/vnd.github.v3.raw"}
 
-    resp = httpx.get(url, headers=headers, timeout=10)
-    _raise_for_status(resp, "README")
-    return resp.text
+    async def _run(c: httpx.AsyncClient) -> str:
+        resp = await c.get(url, headers=headers, timeout=10)
+        _raise_for_status(resp, "README")
+        return resp.text
 
-def fetch_repo_metadata(owner: str, repo: str) -> Dict[str, Any]:
+    if client is not None:
+        return await _run(client)
+    async with httpx.AsyncClient() as c:
+        return await _run(c)
+
+
+async def fetch_repo_metadata(
+    owner: str, repo: str, *, client: httpx.AsyncClient | None = None
+) -> Dict[str, Any]:
     """
     Fetches basic repository metadata, including default branch and description.
     """
     url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}"
-    resp = httpx.get(url, timeout=10)
-    _raise_for_status(resp, "Repository metadata")
-    return resp.json()
 
-def fetch_repo_languages(owner: str, repo: str) -> Dict[str, int]:
+    async def _run(c: httpx.AsyncClient) -> Dict[str, Any]:
+        resp = await c.get(url, timeout=10)
+        _raise_for_status(resp, "Repository metadata")
+        return resp.json()
+
+    if client is not None:
+        return await _run(client)
+    async with httpx.AsyncClient() as c:
+        return await _run(c)
+
+
+async def fetch_repo_languages(
+    owner: str, repo: str, *, client: httpx.AsyncClient | None = None
+) -> Dict[str, int]:
     """
     Fetches language usage statistics for the repository.
 
     Returns a mapping of language -> bytes of code.
     """
     url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/languages"
-    resp = httpx.get(url, timeout=10)
-    _raise_for_status(resp, "Repository languages")
-    data = resp.json()
-    return {str(k): int(v) for k, v in data.items()}
 
-def fetch_repo_tree(owner: str, repo: str, ref: str | None = None, recursive: bool = True) -> List[Dict[str, Any]]:
+    async def _run(c: httpx.AsyncClient) -> Dict[str, int]:
+        resp = await c.get(url, timeout=10)
+        _raise_for_status(resp, "Repository languages")
+        data = resp.json()
+        return {str(k): int(v) for k, v in data.items()}
+
+    if client is not None:
+        return await _run(client)
+    async with httpx.AsyncClient() as c:
+        return await _run(c)
+
+
+async def fetch_repo_tree(
+    owner: str,
+    repo: str,
+    ref: str | None = None,
+    recursive: bool = True,
+    *,
+    client: httpx.AsyncClient | None = None,
+) -> List[Dict[str, Any]]:
     """
     Fetches the repository file tree for the given ref (branch/sha).
 
@@ -83,37 +119,49 @@ def fetch_repo_tree(owner: str, repo: str, ref: str | None = None, recursive: bo
     Returns the 'tree' list from the Git Trees API.
     """
     if ref is None:
-        metadata = fetch_repo_metadata(owner, repo)
+        metadata = await fetch_repo_metadata(owner, repo, client=client)
         ref = metadata.get("default_branch")
         if not ref:
             raise GitHubAPIError(422, "Repository appears to be empty (no default branch)")
 
-    branch_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/branches/{ref}"
-    branch_resp = httpx.get(branch_url, timeout=10)
-    if branch_resp.status_code == 404:
-        raise GitHubAPIError(422, "Repository appears to be empty (no branches)")
-    _raise_for_status(branch_resp, "Branch info")
+    async def _run(c: httpx.AsyncClient) -> List[Dict[str, Any]]:
+        branch_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/branches/{ref}"
+        branch_resp = await c.get(branch_url, timeout=10)
+        if branch_resp.status_code == 404:
+            raise GitHubAPIError(422, "Repository appears to be empty (no branches)")
+        _raise_for_status(branch_resp, "Branch info")
 
-    branch_data = branch_resp.json()
-    commit = branch_data.get("commit") or {}
-    commit_sha = commit.get("sha")
-    if not commit_sha:
-        raise GitHubAPIError(422, "Repository appears to be empty")
+        branch_data = branch_resp.json()
+        commit = branch_data.get("commit") or {}
+        commit_sha = commit.get("sha")
+        if not commit_sha:
+            raise GitHubAPIError(422, "Repository appears to be empty")
 
-    params = {"recursive": "1"} if recursive else None
-    tree_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/git/trees/{commit_sha}"
-    tree_resp = httpx.get(tree_url, params=params, timeout=10)
-    _raise_for_status(tree_resp, "Repository tree")
+        params = {"recursive": "1"} if recursive else None
+        tree_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/git/trees/{commit_sha}"
+        tree_resp = await c.get(tree_url, params=params, timeout=10)
+        _raise_for_status(tree_resp, "Repository tree")
 
-    tree_data = tree_resp.json()
-    tree = tree_data.get("tree")
-    if not isinstance(tree, list):
-        raise GitHubAPIError(502, "Unexpected tree format from GitHub API")
+        tree_data = tree_resp.json()
+        tree = tree_data.get("tree")
+        if not isinstance(tree, list):
+            raise GitHubAPIError(502, "Unexpected tree format from GitHub API")
+        return tree
 
-    return tree
+    if client is not None:
+        return await _run(client)
+    async with httpx.AsyncClient() as c:
+        return await _run(c)
 
 
-def fetch_file_contents(owner: str, repo: str, path: str, ref: str | None = None) -> str:
+async def fetch_file_contents(
+    owner: str,
+    repo: str,
+    path: str,
+    ref: str | None = None,
+    *,
+    client: httpx.AsyncClient | None = None,
+) -> str:
     """
     Fetches the contents of a single file at the given path.
     """
@@ -123,9 +171,15 @@ def fetch_file_contents(owner: str, repo: str, path: str, ref: str | None = None
         params = {"ref": ref}
     headers = {"Accept": "application/vnd.github.v3.raw"}
 
-    resp = httpx.get(url, headers=headers, params=params, timeout=10)
-    _raise_for_status(resp, f"File {path}")
-    return resp.text
+    async def _run(c: httpx.AsyncClient) -> str:
+        resp = await c.get(url, headers=headers, params=params, timeout=10)
+        _raise_for_status(resp, f"File {path}")
+        return resp.text
+
+    if client is not None:
+        return await _run(client)
+    async with httpx.AsyncClient() as c:
+        return await _run(c)
 
 
 def format_tree_for_prompt(
