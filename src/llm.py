@@ -14,6 +14,7 @@ def summarize_repository(
     readme_text: str,
     repo_metadata: Optional[Dict[str, Any]] = None,
     repo_languages: Optional[Dict[str, int]] = None,
+    files_context: Optional[str] = None,
 ) -> SummarizeResponse:
     """
     Calls the LLM with the repo URL, README text, and any additional
@@ -50,6 +51,15 @@ def summarize_repository(
                 "",
                 "Repository languages (JSON):",
                 json.dumps(repo_languages, indent=2),
+            ]
+        )
+
+    if files_context:
+        context_parts.extend(
+            [
+                "",
+                "Sampled repository files:",
+                files_context,
             ]
         )
 
