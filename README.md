@@ -1,13 +1,8 @@
 ## git-repo-summarizer
 
-Simple service that takes a public GitHub repository URL and returns a human‑readable summary of:
-
-- What the project does
-- The main technologies used
-- The basic project structure
+Simple service that takes a public GitHub repository URL and returns a human‑readable summary of what the project does, the main technologies used and the project structure.
 
 It exposes:
-
 - A FastAPI backend: `POST /summarize`
 - A small Streamlit UI for interactive use
 
@@ -33,7 +28,7 @@ cd git-repo-summarizer
 In the project root:
 
 ```bash
-echo OPENAI_API_KEY=sk-... > .env
+echo OPENAI_API_KEY=... > .env
 ```
 
 3. **Install dependencies with uv**
@@ -82,7 +77,7 @@ With the backend running on `http://localhost:8000`, start the frontend from the
 uv run streamlit run src/streamlit_app.py
 ```
 
-Streamlit will print a URL (typically `http://localhost:8501`). Open it in your browser.
+Streamlit will print a URL where you can access the frontend (typically `http://localhost:8501`).
 
 In the UI:
 
@@ -90,7 +85,7 @@ In the UI:
 - Click **Summarize**
 - The summary, technologies, and structure will appear below the button.
 
-## How it works (high level)
+## How it works
 
 - **Input**: `github_url` pointing to a public GitHub repository.
 - **GitHub client** (`src/github_client.py`):
@@ -99,9 +94,14 @@ In the UI:
 - **LLM summarizer** (`src/llm.py`):
   - Sends the repo URL + README content to the OpenAI API with a structured prompt.
   - Expects JSON with `summary`, `technologies`, and `structure`.
-  - The example uses `gpt-5-mini` for a good balance between cost and quality. You can change the model name in `src/llm.py` if you prefer a different model.
 - **API route** (`src/routes.py`):
   - Validates the URL and handles GitHub / LLM errors.
   - Returns a `SummarizeResponse` object in the format defined in `requirements.md`.
+
+## Approach and Choices
+
+I used the OpenAI API since I already had credits. I chose gpt-5-mini since it offers strong performance, including the ability to set its reasoning level, at a reasonable cost.
+
+Your approach to handling repository contents (what you include, what you skip, and why) **TBC**
 
 Currently, the context sent to the LLM is just the README; more advanced repo processing (e.g., sampling source files, configs, directory trees) can be added on top of this basic flow.
