@@ -169,6 +169,12 @@ def select_files_for_context(
         if not isinstance(path, str):
             continue
 
+        # Avoid re-sending the top-level README via the tree;
+        # we already include README content separately.
+        lower_path = path.lower()
+        if "/" not in path and lower_path.startswith("readme"):
+            continue
+
         # Skip obvious noise directories
         if any(path.startswith(prefix) for prefix in ignore_prefixes):
             continue
@@ -177,7 +183,7 @@ def select_files_for_context(
         if isinstance(size, int) and size > max_size_bytes:
             continue
 
-        if not path.lower().endswith(allowed_exts):
+        if not lower_path.endswith(allowed_exts):
             continue
 
         selected.append(path)

@@ -12,7 +12,6 @@ client = OpenAI()
 def summarize_repository(
     repo_url: str,
     readme_text: str,
-    repo_metadata: Optional[Dict[str, Any]] = None,
     repo_languages: Optional[Dict[str, int]] = None,
     files_context: Optional[str] = None,
 ) -> SummarizeResponse:
@@ -35,15 +34,6 @@ def summarize_repository(
         "README content:",
         readme_text,
     ]
-
-    if repo_metadata is not None:
-        context_parts.extend(
-            [
-                "",
-                "Repository metadata (JSON):",
-                json.dumps(repo_metadata, indent=2),
-            ]
-        )
 
     if repo_languages is not None:
         context_parts.extend(

@@ -6,7 +6,6 @@ from src.schemas import SummarizeRequest, SummarizeResponse
 from src.github_client import (
     GitHubAPIError,
     parse_github_url,
-    fetch_repo_metadata,
     fetch_repo_languages,
     fetch_repo_readme,
     fetch_repo_tree,
@@ -34,10 +33,8 @@ def summarize_repo(payload: SummarizeRequest, debug: bool = False):
         )
 
     try:
-        repo_metadata = fetch_repo_metadata(owner, repo)
         repo_languages = fetch_repo_languages(owner, repo)
         readme_text = fetch_repo_readme(owner, repo)
-
         tree = fetch_repo_tree(owner, repo)
         sample_paths = select_files_for_context(tree)
 
@@ -65,7 +62,6 @@ def summarize_repo(payload: SummarizeRequest, debug: bool = False):
         summary = summarize_repository(
             payload.github_url,
             readme_text,
-            repo_metadata=repo_metadata,
             repo_languages=repo_languages,
             files_context=files_context,
         )
